@@ -1,0 +1,318 @@
+services:
+  # 
+  # DATABASE
+  # 
+  mariadb:
+    image: mariadb:11.4
+    container_name: mariadb
+    restart: always
+
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_DATABASE}
+      MARIADB_USER: ${DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+
+    ports:
+      - "${DB_PORT:-3306}:3306"
+
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+    networks:
+      - app-net
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "healthcheck.sh",
+          "--connect",
+          "--innodb_initialized"
+        ]
+      start_period: 20s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  # 
+  # REDIS
+  # 
+  redis:
+    image: redis:8
+    container_name: redis
+    restart: always
+
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+
+    volumes:
+      - redis_data:/data
+
+    networks:
+      - app-net
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  
+  redis-flush:
+    image: redis:8
+    container_name: redis-flush
+
+    command:
+      - redis-cli
+      - -h
+      - redis
+      - -p
+      - "6379"
+      - FLUSHDB
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
+    networks:
+      - app-net
+
+    profiles:
+      - tools
+
+
+
+  rabbitmq:
+    image: rabbitmq:4.3.2-management
+    container_name: rabbitmq
+    restart: always
+
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+    networks:
+      - app-net
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "rabbitmq-diagnostics",
+          "-q",
+          "ping"
+        ]
+      start_period: 20s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: apex-backend
+    restart: always
+
+    dns:
+      - 172.17.0.1
+      - 8.8.8.8
+      - 8.8.4.4
+
+    environment:
+      PORT: ${PORT}
+      NODE_ENV: ${NODE_ENV}
+
+      # Database
+      DB_HOST: mariadb
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DATABASE: ${DB_DATABASE}
+
+      DATABASE_URL: mysql://${DB_USER}:${DB_PASSWORD}@mariadb:${DB_PORT:-3306}/${DB_DATABASE}
+
+      # RabbitMQ
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+
+      # Mail
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USER: ${MAIL_USER}
+      MAIL_PASS: ${MAIL_PASS}
+      MAIL_FROM: ${MAIL_FROM}
+
+      # JWT
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN}
+
+    command:
+      - sh
+      - -c
+      - |
+        npx prisma migrate deploy --schema=infrastructure/database/prisma/schema.prisma &&
+        node dist/apps/api/main.js
+
+    ports:
+      - "${PORT}:${PORT}"
+
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+    networks:
+      - app-net
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -f http://localhost:${PORT}/v1 || exit 1"
+        ]
+      start_period: 30s
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: apex-worker
+    restart: always
+
+    dns:
+      - 172.17.0.1
+      - 8.8.8.8
+      - 8.8.4.4
+
+    environment:
+      WORKER_PORT: 3004
+      NODE_ENV: ${NODE_ENV}
+
+      # Database
+      DB_HOST: mariadb
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DATABASE: ${DB_DATABASE}
+
+      DATABASE_URL: mysql://${DB_USER}:${DB_PASSWORD}@mariadb:${DB_PORT:-3306}/${DB_DATABASE}
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+
+      # RabbitMQ
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
+
+      # Mail
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USER: ${MAIL_USER}
+      MAIL_PASS: ${MAIL_PASS}
+      MAIL_FROM: ${MAIL_FROM}
+
+      # JWT
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN}
+
+    command:
+      - sh
+      - -c
+      - |
+        node dist/apps/worker/main.js
+
+    depends_on:
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+    networks:
+      - app-net
+
+
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: ngrok
+    restart: unless-stopped
+
+    command:
+      - http
+      - app:${PORT}
+
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+
+    ports:
+      - "4040:4040"
+
+    depends_on:
+      app:
+        condition: service_healthy
+
+    networks:
+      - app-net
+
+
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phpmyadmin
+    restart: always
+
+    environment:
+      PMA_HOST: mariadb
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+
+    ports:
+      - "${PMA_PORT:-8080}:80"
+
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+    networks:
+      - app-net
+
+
+
+volumes:
+  mariadb_data:
+  redis_data:
+  rabbitmq_data:
+
+
+
+networks:
+  app-net:                                                           
+    driver: bridge

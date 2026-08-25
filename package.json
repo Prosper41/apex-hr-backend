@@ -1,0 +1,142 @@
+{
+  "name": "api",
+  "version": "0.0.1",
+  "description": "",
+  "author": "",
+  "private": true,
+  "license": "UNLICENSED",
+  "prisma": {
+    "schema": "infrastructure/database/prisma/schema.prisma"
+  },
+  "scripts": {
+    "build": "nest build",
+    "build:release": "nest build && npm run sentry:sourcemaps",
+    "format": "prettier --write \"apps/**/*.ts\" \"modules/**/*.ts\" \"packages/**/*.ts\" \"infrastructure/**/*.ts\"",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:debug": "nest start --debug --watch",
+    "start:prod": "node dist/apps/api/main",
+    "start:worker": "nest start worker",
+    "start:worker:dev": "nest start worker --watch",
+    "start:worker:debug": "nest start worker --debug --watch",
+    "start:worker:prod": "node dist/apps/worker/main",
+    "lint": "eslint \"{apps,modules,packages,infrastructure,test}/**/*.ts\" --fix",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --coverage",
+    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:e2e": "jest --config ./apps/api/src/test-cases/jest-e2e.json",
+    "doc": "npx @compodoc/compodoc -p tsconfig.json -s --port 3200 --watch -d ./documentation",
+    "sentry:sourcemaps": "sentry-cli sourcemaps inject --org coderaccoon --project node-nestjs ./dist && sentry-cli sourcemaps upload --org coderaccoon --project node-nestjs ./dist"
+  },
+  "dependencies": {
+    "@angular/common": "^21.2.6",
+    "@angular/core": "^21.2.6",
+    "@angular/forms": "^21.2.6",
+    "@angular/platform-browser": "^21.2.6",
+    "@angular/platform-browser-dynamic": "^21.2.6",
+    "@compodoc/compodoc": "^1.2.1",
+    "@nest-lab/throttler-storage-redis": "^1.2.0",
+    "@nestjs/bullmq": "^11.0.4",
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.4",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/cqrs": "^11.0.3",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/mapped-types": "^2.1.0",
+    "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/schedule": "^6.1.3",
+    "@nestjs/swagger": "^11.2.6",
+    "@nestjs/throttler": "^6.5.0",
+    "@prisma/client": "^5.22.0",
+    "@sentry/cli": "^2.58.6",
+    "@sentry/nestjs": "^10.61.0",
+    "amqp-connection-manager": "^5.0.0",
+    "bcrypt": "^6.0.0",
+    "bullmq": "^5.79.1",
+    "cache-manager-redis-store": "^3.0.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.4",
+    "dotenv": "^17.3.1",
+    "ioredis": "^5.11.1",
+    "mjml": "^5.3.0",
+    "nestjs-resend": "^1.1.0",
+    "nodemailer": "^8.0.4",
+    "redis": "^5.12.1",
+    "reflect-metadata": "^0.2.2",
+    "resend": "^6.14.0",
+    "rxjs": "^7.8.1",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.2.0",
+    "@eslint/js": "^9.18.0",
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@nestjs/testing": "^11.1.27",
+    "@types/amqplib": "^0.10.8",
+    "@types/bcrypt": "^6.0.0",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/mjml": "^5.0.0",
+    "@types/node": "^22.19.15",
+    "@types/nodemailer": "^7.0.11",
+    "@types/supertest": "^6.0.3",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "globals": "^16.0.0",
+    "jest": "^30.4.2",
+    "prettier": "^3.8.3",
+    "prisma": "^5.22.0",
+    "source-map-support": "^0.5.21",
+    "supertest": "^7.0.0",
+    "ts-jest": "^29.4.11",
+    "ts-loader": "^9.5.2",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": ".",
+    "roots": [
+      "<rootDir>/apps/api/src",
+      "<rootDir>/apps/worker/src",
+      "<rootDir>/modules",
+      "<rootDir>/packages",
+      "<rootDir>/infrastructure"
+    ],
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "module": "commonjs",
+            "moduleResolution": "node",
+            "resolvePackageJsonExports": false
+          }
+        }
+      ]
+    },
+    "moduleNameMapper": {
+      "^@infra/(.*)$": "<rootDir>/infrastructure/$1",
+      "^@common/(.*)$": "<rootDir>/packages/common/$1",
+      "^modules/(.*)$": "<rootDir>/modules/$1"
+    },
+    "collectCoverageFrom": [
+      "apps/api/src/**/*.(t|j)s",
+      "apps/worker/src/**/*.(t|j)s",
+      "modules/**/*.(t|j)s",
+      "packages/**/*.(t|j)s"
+    ],
+    "coverageDirectory": "./coverage",
+    "testEnvironment": "node"
+  }
+}

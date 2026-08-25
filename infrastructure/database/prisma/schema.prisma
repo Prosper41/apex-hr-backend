@@ -1,0 +1,326 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id              String   @id @default(uuid())
+  name            String   @unique
+  companyType     String?
+  companyPhone    String?
+  companyLocation String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  registeredAt  DateTime
+  dissolvedAt DateTime?
+
+  hrDepartmentId String? @unique
+  hrDepartment   Department? @relation("TenantHrDepartment", fields: [hrDepartmentId],references: [id], onDelete: SetNull)
+  
+  users         User[]
+  departments   Department[]
+  leavePolicies LeavePolicy[]
+  leaveRequests LeaveRequest[]
+  notifications Notification[]
+
+  @@map("tenants")
+}
+
+model Notification {
+  id        String               @id @default(uuid())
+  title     String
+  message   String               @db.Text
+  priority  NotificationPriority @default(LOW)
+  isRead    Boolean              @default(false)
+  createdAt DateTime             @default(now())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  sourceType NotificationSourceType
+  sourceId   String?
+
+  @@index([tenantId, userId, isRead])
+  @@index([tenantId, userId, createdAt])
+  @@map("notifications")
+}
+
+enum NotificationSourceType {
+  LEAVE_REQUEST
+  LEAVE_BALANCE
+  SYSTEM
+}
+
+enum NotificationPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum Role {
+  EMPLOYEE
+  TEAM_LEAD
+  DEPT_HEAD
+  HR_ADMIN
+  TENANT_ADMIN
+}
+
+model User {
+  id                 String    @id @default(uuid())
+  password           String
+  firstName          String
+  lastName           String
+  email              String    @unique
+  contact            String?
+  houseAddress       String?
+  dateOfBirth        DateTime?
+  role               Role      @default(EMPLOYEE)
+  mustChangePassword Boolean   @default(false)
+  passwordResetToken String?   @unique
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  joinedAt     DateTime @default(now())
+  offboardedAt DateTime?
+  
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  refreshTokens        RefreshToken[]
+  leaveRequests        LeaveRequest[]
+  leaveRequestComments LeaveRequestComment[]
+  teamLeadApprovals    LeaveRequest[]        @relation("TeamLeadApprover")
+  deptApprovals        LeaveRequest[]        @relation("DeptApprover")
+  hrApprovals          LeaveRequest[]        @relation("HrApprover")
+  tenantAdminApprovals LeaveRequest[]        @relation("TenantAdminApprover")
+  leaveBalanceLedger   LeaveBalanceLedger[]
+  notifications        Notification[]
+
+  @@unique([email, tenantId])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique @db.VarChar(512)
+  isRevoked Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Department {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  hrForTenant Tenant? @relation("TenantHrDepartment")
+
+  parentId String?
+  parent   Department?  @relation("DepartmentHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children Department[] @relation("DepartmentHierarchy")
+
+  users         User[]
+  leavePolicies LeavePolicyDepartment[]
+  leaveRequests LeaveRequest[]
+
+  @@map("departments")
+}
+
+enum LeaveType {
+  Annual
+  Sick
+  Personal
+  Parental
+  Custom
+}
+
+enum AccrualFrequency {
+  Monthly
+  Yearly
+  OneTime
+  Manual
+}
+
+enum CarryOverPolicy {
+  None
+  Full
+  Limited
+  NA
+}
+
+enum EntryType {
+  ACCRUAL
+  ADJUSTMENT
+  DEDUCTION
+  CARRY_OVER
+  EXPIRY
+  REINSTATEMENT
+}
+
+model LeavePolicy {
+  id                String           @id @default(uuid())
+  name              String
+  description       String?
+  type              LeaveType
+  accrual           AccrualFrequency
+  accrualRate       Float
+  maxBalance        Float
+  carryOverPolicy   CarryOverPolicy
+  carryOverLimit    Float?
+  waitingPeriodDays Int?
+  isActive          Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  departments        LeavePolicyDepartment[]
+  leaveRequests       LeaveRequest[]
+  leaveBalanceLedger  LeaveBalanceLedger[]
+
+  @@map("leave_policies")
+}
+
+model LeavePolicyDepartment {
+  id            String      @id @default(uuid())
+  leavePolicyId String
+  leavePolicy   LeavePolicy @relation(fields: [leavePolicyId], references: [id], onDelete: Cascade)
+  departmentId  String
+  department    Department  @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([leavePolicyId, departmentId])
+  @@map("leave_policy_departments")
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  TEAM_LEAD_COMMENTED
+  DEPT_APPROVED
+  REJECTED
+  APPROVED
+  CANCELLED
+}
+
+model LeaveRequest {
+  id        String             @id @default(uuid())
+  startDate DateTime
+  endDate   DateTime
+  isHalfDay Boolean            @default(false)
+  reason    String             @db.Text
+  totalDays Float
+  status    LeaveRequestStatus @default(PENDING)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  leavePolicyId String
+  leavePolicy   LeavePolicy @relation(fields: [leavePolicyId], references: [id], onDelete: Cascade)
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  teamLeadApproverId String?
+  teamLeadApprovedAt DateTime?
+  teamLeadApprover   User?     @relation("TeamLeadApprover", fields: [teamLeadApproverId], references: [id], onDelete: SetNull)
+
+  deptApproverId String?
+  deptApprovedAt DateTime?
+  deptComment String?
+  deptApprover   User?     @relation("DeptApprover", fields: [deptApproverId], references: [id], onDelete: SetNull)
+
+  hrApproverId String?
+  hrApprovedAt DateTime?
+  hrApprover   User?     @relation("HrApprover", fields: [hrApproverId], references: [id], onDelete: SetNull)
+
+  tenantAdminApproverId String?
+  tenantAdminApprovedAt DateTime?
+  tenantAdminApprover   User?     @relation("TenantAdminApprover", fields: [tenantAdminApproverId], references: [id], onDelete: SetNull)
+
+  comments             LeaveRequestComment[]
+  balanceLedgerEntries LeaveBalanceLedger[]
+
+  @@map("leave_requests")
+}
+
+model LeaveRequestComment {
+  id        String   @id @default(uuid())
+  comment   String   @db.Text
+  createdAt DateTime @default(now())
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  leaveRequestId String
+  leaveRequest   LeaveRequest @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
+
+  @@map("leave_request_comments")
+}
+
+model LeaveBalanceLedger {
+  id            String    @id @default(uuid())
+  entryType     EntryType
+  amount        Decimal   @db.Decimal(5, 2)
+  isPending     Boolean   @default(false)
+  effectiveDate DateTime  @db.Date
+  note          String?
+  createdAt     DateTime  @default(now())
+
+  tenantId      String
+  employeeId    String
+  leavePolicyId String
+  referenceId   String?
+
+  employee     User          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leavePolicy  LeavePolicy   @relation(fields: [leavePolicyId], references: [id], onDelete: Cascade)
+  leaveRequest LeaveRequest? @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, employeeId, leavePolicyId, effectiveDate])
+  @@map("leave_balance_ledger")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String
+  entityType String
+  entityId   String
+  action     String
+  actorId    String
+  actorRole  String
+  before     Json?
+  after      Json?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, actorId])
+  @@index([tenantId, createdAt])
+  @@map("audit_logs")
+}
